@@ -137,20 +137,32 @@ public partial class App : System.Windows.Application
     /// <summary>Прячет оверлей и снимает ПОСЛЕ того, как DWM реально убрал окно с экрана.</summary>
     void CaptureAfterOverlayHidden(Func<string> capture, string okTitle)
     {
+        ScreenshotService.Log("Хоткей/кнопка скриншота сработала (" + okTitle + ")");
         if (_overlay.IsVisible) _overlay.HideOverlay(); // не снимать сам оверлей
-        // ContextIdle = после прохода рендера WPF; плюс небольшая пауза на композицию DWM
+        // ContextIdle = после прохода рендера WPF; сам захват — на фоне (ffmpeg-скриншот
+        // может занять секунду-две, UI-поток морозить нельзя)
         Dispatcher.BeginInvoke(new Action(() =>
         {
-            try
+            System.Threading.Tasks.Task.Run(() =>
             {
-                System.Threading.Thread.Sleep(80);
-                string path = capture();
-                _tray.ShowBalloonTip(3000, "ArcRecorder", okTitle + ":\n" + path, WinForms.ToolTipIcon.Info);
-            }
-            catch (Exception ex)
-            {
-                _tray.ShowBalloonTip(3000, "ArcRecorder", Loc.T("ShotFail") + ex.Message, WinForms.ToolTipIcon.Error);
-            }
+                try
+                {
+                    System.Threading.Thread.Sleep(80); // пауза на композицию DWM
+                    string path = capture();
+                    // Звук — единственный сигнал в фуллскрин-игре: Windows там включает
+                    // «Не беспокоить» и глушит балуны из трея
+                    try { System.Media.SystemSounds.Asterisk.Play(); } catch { }
+                    Dispatcher.BeginInvoke(new Action(() =>
+                        _tray?.ShowBalloonTip(3000, "ArcRecorder", okTitle + ":\n" + path, WinForms.ToolTipIcon.Info)));
+                }
+                catch (Exception ex)
+                {
+                    ScreenshotService.Log("Захват сдох с исключением: " + ex);
+                    try { System.Media.SystemSounds.Hand.Play(); } catch { }
+                    Dispatcher.BeginInvoke(new Action(() =>
+                        _tray?.ShowBalloonTip(3000, "ArcRecorder", Loc.T("ShotFail") + ex.Message, WinForms.ToolTipIcon.Error)));
+                }
+            });
         }), DispatcherPriority.ContextIdle);
     }
 
