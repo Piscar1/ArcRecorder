@@ -1,0 +1,14 @@
+<Window x:Class="ArcRecorder.RecIndicatorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="REC" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize" ShowActivated="False"
+        SizeToContent="WidthAndHeight" IsHitTestVisible="False" Focusable="False">
+    <Border Background="#CC141416" CornerRadius="6" Padding="10,6" Margin="8">
+        <StackPanel Orientation="Horizontal">
+            <Ellipse x:Name="RecDot" Width="10" Height="10" Fill="#E53935" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBlock x:Name="RecTimer" Text="REC 00:00:00" FontSize="13" FontWeight="Bold"
+                       Foreground="#F0F0F0" VerticalAlignment="Center"/>
+        </StackPanel>
+    </Border>
+</Window>

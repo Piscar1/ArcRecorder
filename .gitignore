@@ -1,0 +1,13 @@
+# build output
+[Bb]in/
+[Oo]bj/
+[Pp]ublish/
+
+# user/IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# releases
+*.zip
