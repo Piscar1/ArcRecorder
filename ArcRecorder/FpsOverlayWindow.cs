@@ -17,9 +17,22 @@ namespace ArcRecorder
         const int WS_EX_TRANSPARENT = 0x20;
         const int WS_EX_NOACTIVATE = 0x08000000;
         const int WS_EX_TOOLWINDOW = 0x80;
+        const uint MONITOR_DEFAULTTOPRIMARY = 1;
+        const uint MONITOR_DEFAULTTONEAREST = 2;
+        const uint SWP_NOSIZE = 0x0001, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
 
         [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr hwnd, int index);
         [DllImport("user32.dll")] static extern int SetWindowLong(IntPtr hwnd, int index, int value);
+        [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+        [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO mi);
+        [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
+        [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct RECT { public int Left, Top, Right, Bottom; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }
 
         // Тема «тёмный фон» (по умолчанию): светлый текст + чёрная тень
         static readonly Brush DarkLabelBrush = new SolidColorBrush(Color.FromRgb(0xB8, 0xB8, 0xB8));
@@ -37,6 +50,7 @@ namespace ArcRecorder
         System.Windows.Media.Effects.DropShadowEffect _shadow;
         int _corner = 1;          // 0 TL, 1 TR, 2 BL, 3 BR
         bool _lightTheme;         // текущая тема (true = тёмный текст на светлом фоне)
+        IntPtr _monitor;          // монитор, на котором держим счётчик (где активное окно); Zero = главный
 
         Brush LabelBrush => _lightTheme ? LightLabelBrush : DarkLabelBrush;
         Brush ValueBrush => _lightTheme ? LightValueBrush : DarkValueBrush;
@@ -74,7 +88,7 @@ namespace ArcRecorder
             row.Effect = _shadow;
             Content = row;
 
-            // Перепозиционировать в выбранный угол, когда размер посчитан
+            // Перепозиционировать в выбранный угол, когда размер посчитан (в т.ч. после смены DPI монитора)
             SizeChanged += (o, e) => Reposition();
         }
 
@@ -87,11 +101,36 @@ namespace ArcRecorder
             Reposition();
         }
 
+        /// <summary>Держать счётчик на мониторе активного окна (игры). Zero — ничего не менять.</summary>
+        public void FollowWindow(IntPtr foreground)
+        {
+            if (foreground == IntPtr.Zero) return;
+            var mon = MonitorFromWindow(foreground, MONITOR_DEFAULTTONEAREST);
+            if (mon == IntPtr.Zero || mon == _monitor) return;
+            _monitor = mon;
+            Reposition();
+        }
+
+        /// <summary>
+        /// Позиция в физических пикселях через WinAPI: SystemParameters.WorkArea — это только главный монитор,
+        /// а WPF-координаты на мониторах с разным DPI врут.
+        /// </summary>
         void Reposition()
         {
-            var area = SystemParameters.WorkArea;
-            Left = _corner is 0 or 2 ? area.Left + 14 : area.Right - ActualWidth - 14;
-            Top = _corner is 0 or 1 ? area.Top + 10 : area.Bottom - ActualHeight - 10;
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero) return;
+            var mon = _monitor != IntPtr.Zero ? _monitor : MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY);
+            var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+            if (!GetMonitorInfo(mon, ref mi) || !GetWindowRect(hwnd, out var wr)) return;
+
+            double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+            int w = wr.Right - wr.Left, h = wr.Bottom - wr.Top;
+            int mx = (int)Math.Round(14 * dpi), my = (int)Math.Round(10 * dpi);
+            var a = mi.rcWork;
+            int x = _corner is 0 or 2 ? a.Left + mx : a.Right - w - mx;
+            int y = _corner is 0 or 1 ? a.Top + my : a.Bottom - h - my;
+            if (x != wr.Left || y != wr.Top)
+                SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
         }
 
         /// <summary>Сменить тему: light=true — тёмный текст (для светлого фона).</summary>
@@ -170,17 +209,17 @@ namespace ArcRecorder
             var hwnd = new WindowInteropHelper(this).Handle;
             SetWindowLong(hwnd, GWL_EXSTYLE,
                 GetWindowLong(hwnd, GWL_EXSTYLE) | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
+            // Не попадаем в запись/скриншоты. Заодно автотема меряет яркость фона, а не собственного текста
+            // (раньше белый текст задирал яркость → тёмная тема → яркость падала → мигание).
+            CaptureExclusion.Apply(this);
         }
 
         /// <summary>Экранный прямоугольник счётчика в физических пикселях (звать с UI-потока).</summary>
         public System.Drawing.Rectangle GetScreenRect()
         {
-            var src = PresentationSource.FromVisual(this);
-            double sx = src?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
-            double sy = src?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
-            return new System.Drawing.Rectangle(
-                (int)(Left * sx), (int)(Top * sy),
-                Math.Max(8, (int)(ActualWidth * sx)), Math.Max(8, (int)(ActualHeight * sy)));
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out var r)) return System.Drawing.Rectangle.Empty;
+            return System.Drawing.Rectangle.FromLTRB(r.Left, r.Top, r.Right, r.Bottom);
         }
 
         /// <summary>
@@ -190,6 +229,7 @@ namespace ArcRecorder
         /// </summary>
         public static double SampleLuma(System.Drawing.Rectangle r)
         {
+            if (r.Width <= 0 || r.Height <= 0) return -1;
             try
             {
                 using var bmp = new System.Drawing.Bitmap(r.Width, r.Height,

@@ -323,6 +323,8 @@
                                   Margin="0,0,0,4" Checked="FpsSetting_Changed" Unchecked="FpsSetting_Changed"/>
                         <CheckBox x:Name="FpsHideDesktopCheck" Content="Прятать на рабочем столе (только в играх)" Foreground="{StaticResource TextBrush}"
                                   Margin="0,0,0,8" Checked="FpsSetting_Changed" Unchecked="FpsSetting_Changed"/>
+                        <CheckBox x:Name="NotificationsCheck" Content="Уведомления о записи, повторе и снимках" Foreground="{StaticResource TextBrush}"
+                                  Margin="0,4,0,8" Checked="NotificationsCheck_Changed" Unchecked="NotificationsCheck_Changed"/>
                     </StackPanel>
                 </ScrollViewer>
             </Grid>

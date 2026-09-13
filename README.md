@@ -12,8 +12,10 @@ WPF / .NET 8, ffmpeg under the hood.
 - **Screenshots** — full monitor (Alt+F1) and active window / photo mode (Alt+F2)
 - **FPS counter (Alt+R)** — ETW-based (PresentMon-style), GPU/CPU load, auto light/dark theme, hides on desktop
 - **Window capture mode** — records only the chosen app, Alt+Tab stays out of the video
-- **Audio** — system sound + microphone (NAudio → ffmpeg pipe)
+- **Audio** — system sound + microphone (NAudio → ffmpeg via a named pipe)
 - **Overlay (Alt+Z)** — Intel-styled in-app overlay, RU/EN interface language
+- **Notifications** — NVIDIA-style toasts (top-right) for recording / replay / screenshots, and a small red dot in the bottom-right corner while recording. Overlay, toasts and the dot never end up in your videos or screenshots
+- **Tray icon** — shows a red dot while recording
 - Multi-monitor / multi-GPU aware (DXGI order, same as ffmpeg ddagrab)
 
 ## Requirements / Требования
@@ -25,6 +27,7 @@ WPF / .NET 8, ffmpeg under the hood.
   ```
   winget install ffmpeg
   ```
+  Works with ffmpeg 9.x (tested on the gyan.dev full build).
 - Administrator rights are required for the FPS counter (ETW session)
 
 ## Download / Скачать
@@ -37,7 +40,7 @@ Grab the latest zip from [Releases](../../releases), unpack anywhere, run `ArcRe
 
 ```
 git clone <this repo>
-cd ArcRecorder-GitHub/ArcRecorder
+cd ArcRecorder/ArcRecorder
 dotnet build -c Release
 # exe: bin/x64/Release/net8.0-windows/ArcRecorder.exe
 ```
@@ -57,6 +60,7 @@ dotnet build -c Release
 
 - Recordings & screenshots: `Videos\ArcRecorder\`
 - Settings: `%APPDATA%\ArcRecorder\settings.json`
+- Logs: `%APPDATA%\ArcRecorder\` — `error.log`, `ffmpeg.log` (start/stop timings), `hotkeys.log`, `screenshot.log`
 
 ## License
 

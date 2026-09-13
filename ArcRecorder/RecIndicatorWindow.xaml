@@ -4,11 +4,10 @@
         Title="REC" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize" ShowActivated="False"
         SizeToContent="WidthAndHeight" IsHitTestVisible="False" Focusable="False">
-    <Border Background="#CC141416" CornerRadius="6" Padding="10,6" Margin="8">
-        <StackPanel Orientation="Horizontal">
-            <Ellipse x:Name="RecDot" Width="10" Height="10" Fill="#E53935" VerticalAlignment="Center" Margin="0,0,8,0"/>
-            <TextBlock x:Name="RecTimer" Text="REC 00:00:00" FontSize="13" FontWeight="Bold"
-                       Foreground="#F0F0F0" VerticalAlignment="Center"/>
-        </StackPanel>
-    </Border>
+    <!-- Индикатор записи как у NVIDIA: маленькая красная точка в правом нижнем углу, без текста и таймера.
+         Тёмная подложка — чтобы точку было видно и на светлом фоне. -->
+    <Grid Margin="4">
+        <Ellipse Width="20" Height="20" Fill="#B3141416" Stroke="#40FFFFFF" StrokeThickness="1"/>
+        <Ellipse Width="10" Height="10" Fill="#E53935"/>
+    </Grid>
 </Window>

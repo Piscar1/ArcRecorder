@@ -11,7 +11,7 @@ namespace ArcRecorder
         public static string T(string key) =>
             _s.TryGetValue(key, out var v) ? (Lang == "en" ? v[1] : v[0]) : key;
 
-        /// <summary>Перевод с подстановкой: F("ReplaySaved", 5) → "Повтор (5 мин) сохранён:\n".</summary>
+        /// <summary>Перевод с подстановкой: F("ReplayOn", 5) → "Повтор: буфер активен (5 мин)".</summary>
         public static string F(string key, params object[] args) => string.Format(T(key), args);
 
         // [0] = ru, [1] = en
@@ -89,6 +89,27 @@ namespace ArcRecorder
             ["SizeXL"] = new[] { "Огромный (150%)", "Huge (150%)" },
             ["AutoTheme"] = new[] { "Автоцвет: тёмный текст на светлом фоне", "Auto color: dark text on light background" },
             ["HideDesktop"] = new[] { "Прятать на рабочем столе (только в играх)", "Hide on desktop (games only)" },
+            ["Notifications"] = new[] { "Уведомления о записи, повторе и снимках", "Notifications for recording, replay and screenshots" },
+
+            // ---- всплывающие уведомления ----
+            ["ToastTest"] = new[] { "Уведомления включены", "Notifications enabled" },
+            ["ToastTestSub"] = new[] { "Так будут выглядеть сообщения о записи и снимках", "This is how recording and screenshot messages will look" },
+            ["ToastRecStarted"] = new[] { "Запись запущена", "Recording started" },
+            ["ToastRecStartedSub"] = new[] { "Alt+F9 — остановить", "Alt+F9 to stop" },
+            ["ToastRecSaved"] = new[] { "Запись сохранена", "Recording saved" },
+            ["ToastRecDamaged"] = new[] { "Запись сохранена, но может быть повреждена", "Recording saved but may be corrupted" },
+            ["ToastRecInterrupted"] = new[] { "Запись прервалась", "Recording interrupted" },
+            ["ToastReplaySaved"] = new[] { "Повтор сохранён", "Replay saved" },
+            ["ToastReplaySavedSub"] = new[] { "Последние {0} мин · {1}", "Last {0} min · {1}" },
+            ["ToastReplayNoRestart"] = new[] { "Буфер не перезапустился: ", "Buffer failed to restart: " },
+            ["ToastReplayEmpty"] = new[] { "Буфер повтора пока пустой", "Replay buffer is still empty" },
+            ["ToastReplayEmptySub"] = new[] { "Подожди несколько секунд и попробуй снова", "Wait a few seconds and try again" },
+            ["ToastReplayOff"] = new[] { "Мгновенный повтор выключен", "Instant replay is off" },
+            ["ToastReplayOffSub"] = new[] { "Включи буфер в настройках: Alt+Z → ⚙", "Enable the buffer in settings: Alt+Z → ⚙" },
+            ["ToastReplayPaused"] = new[] { "Повтор на паузе", "Replay paused" },
+            ["ToastReplayPausedSub"] = new[] { "Во время записи буфер повтора не пишется", "The replay buffer doesn't run while recording" },
+            ["ToastReplayDied"] = new[] { "Буфер повтора остановился", "Replay buffer stopped" },
+            ["ToastShotFail"] = new[] { "Не удалось сделать снимок", "Screenshot failed" },
 
             // ---- трей ----
             ["TrayIdle"] = new[] { "ArcRecorder — Alt+Z оверлей, Alt+F9 запись, Alt+F10 повтор",
@@ -108,20 +129,20 @@ namespace ArcRecorder
                                      "Failed to register some hotkeys (Alt+Z / Alt+F9 / Alt+F10 / Alt+F1 / Alt+F2 / Alt+R).\nAnother overlay app may have grabbed them." },
             ["ShotSaved"] = new[] { "Снимок экрана сохранён", "Screenshot saved" },
             ["WindowShotSaved"] = new[] { "Снимок окна сохранён", "Window shot saved" },
-            ["ShotFail"] = new[] { "Не удалось сделать снимок: ", "Failed to take screenshot: " },
             ["FpsAdmin"] = new[] { "Счётчик FPS требует запуска от администратора (ETW-сессия).\n\n",
                                    "FPS counter requires running as administrator (ETW session).\n\n" },
             ["ReplayProblem"] = new[] { "Проблема с буфером повтора:\n", "Replay buffer problem:\n" },
-            ["ReplayOffWarn"] = new[] { "Буфер повтора выключен — включи его в оверлее (Alt+Z).",
-                                        "Replay buffer is off — enable it in the overlay (Alt+Z)." },
-            ["ReplaySaved"] = new[] { "Повтор ({0} мин) сохранён:\n", "Replay ({0} min) saved:\n" },
-            ["BufferEmpty"] = new[] { "Буфер пока пустой, подожди чуть-чуть.", "Buffer is still empty, give it a moment." },
             ["ReplaySaveFail"] = new[] { "Не удалось сохранить повтор:\n", "Failed to save replay:\n" },
-            ["RecSaved"] = new[] { "Запись сохранена:\n", "Recording saved:\n" },
             ["RecWindow"] = new[] { "Пишем окно: ", "Recording window: " },
             ["RecWindowFallback"] = new[] { "Подходящее окно не нашлось — пишем весь монитор.",
                                             "No suitable window found — recording the full monitor." },
             ["RecStartFail"] = new[] { "Не удалось начать запись:\n", "Failed to start recording:\n" },
+            ["ReplayPaused"] = new[] { "Повтор: пауза на время записи", "Replay: paused while recording" },
+            ["FfmpegFail"] = new[] { "ffmpeg не стартанул:\n", "ffmpeg failed to start:\n" },
+            ["AlreadyRunning"] = new[] { "ArcRecorder уже запущен — ищи иконку в трее.",
+                                         "ArcRecorder is already running — look for the tray icon." },
+            ["Unexpected"] = new[] { "Непредвиденная ошибка (подробности в %APPDATA%\\ArcRecorder\\error.log):\n",
+                                     "Unexpected error (details in %APPDATA%\\ArcRecorder\\error.log):\n" },
         };
     }
 }

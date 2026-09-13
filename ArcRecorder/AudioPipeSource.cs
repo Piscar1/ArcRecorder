@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.IO.Pipes;
 using System.Threading;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
@@ -9,8 +10,8 @@ namespace ArcRecorder
 {
     /// <summary>
     /// Микшер системного звука (WASAPI loopback) + микрофона.
-    /// Гонит PCM s16le 48kHz stereo в stdin ffmpeg в реальном времени.
-    /// Если источников нет — гонит тишину (нужно как часы для -shortest).
+    /// Гонит PCM s16le 48kHz stereo в именованный канал, который ffmpeg читает как вход, в реальном времени.
+    /// Если источников нет — гонит тишину, чтобы у файла всегда была звуковая дорожка.
     /// </summary>
     public class AudioPipeSource
     {
@@ -23,9 +24,23 @@ namespace ArcRecorder
         Thread _pump;
         volatile bool _running;
         Stream _out;
+        int _stopped;
+        long _videoWaitMs = -1, _maxWriteMs;
+
+        /// <summary>Разбивка времени последней остановки — для ffmpeg.log.</summary>
+        public string StopTimings { get; private set; }
+
+        readonly NamedPipeServerStream _server;
+        readonly CancellationTokenSource _cts = new CancellationTokenSource();
+
+        /// <summary>Путь канала для ffmpeg: -i "\\.\pipe\ArcRecorder_audio_…".</summary>
+        public string PipePath { get; }
 
         public AudioPipeSource(bool systemAudio, bool mic)
         {
+            string pipeName = "ArcRecorder_audio_" + Guid.NewGuid().ToString("N");
+            PipePath = @"\\.\pipe\" + pipeName;
+            _server = new NamedPipeServerStream(pipeName, PipeDirection.Out, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             _mixer = new MixingSampleProvider(WaveFormat.CreateIeeeFloatWaveFormat(48000, 2)) { ReadFully = true };
             if (systemAudio)
             {
@@ -59,9 +74,10 @@ namespace ArcRecorder
             _mixer.AddMixerInput(sp);
         }
 
-        public void Start(Stream output)
+        /// <summary>Запускает захват и поток звука; сам поток сначала ждёт, пока ffmpeg подключится к каналу.</summary>
+        public void Start()
         {
-            _out = output;
+            _out = _server;
             _running = true;
             try { _loopback?.StartRecording(); } catch { }
             try { _mic?.StartRecording(); } catch { }
@@ -74,7 +90,14 @@ namespace ArcRecorder
 
         void PumpLoop()
         {
-            // Прайминг: 100 мс тишины, чтобы ffmpeg смог пробить raw-поток из stdin и запустить граф.
+            // ffmpeg открывает канал, когда доходит до своих входов; ждём, но не вечно (Stop отменяет ожидание)
+            try
+            {
+                if (!_server.WaitForConnectionAsync(_cts.Token).Wait(15000)) return;
+            }
+            catch { return; }
+
+            // Прайминг: 100 мс тишины, чтобы ffmpeg смог пробить raw-поток из канала и запустить граф.
             // Без этого он может висеть в ожидании первых байтов звука и не начать захват видео.
             try
             {
@@ -93,6 +116,7 @@ namespace ArcRecorder
                 Thread.Sleep(10);
                 waited += 10;
             }
+            _videoWaitMs = waited;
             if (!_running) return;
             // выбрасываем звук, накопленный за время инициализации видео — контент совпадёт с первым кадром
             foreach (var b in _buffers) { try { b.ClearBuffer(); } catch { } }
@@ -101,6 +125,7 @@ namespace ArcRecorder
             long sentSamples = 0; // сэмплов на канал
             var floats = new float[48000 * 2];
             var bytes = new byte[floats.Length * 2];
+            var scratch = Array.Empty<byte>();
             try
             {
                 while (_running)
@@ -119,9 +144,15 @@ namespace ArcRecorder
                             bytes[bi++] = (byte)v;
                             bytes[bi++] = (byte)(v >> 8);
                         }
+                        long w0 = sw.ElapsedMilliseconds;
                         _out.Write(bytes, 0, bi);
                         _out.Flush();
+                        long wd = sw.ElapsedMilliseconds - w0; // долгая запись = ffmpeg перестал читать звук
+                        if (wd > _maxWriteMs) _maxWriteMs = wd;
                         sentSamples += todo;
+                        // Часы звуковой карты и Stopwatch расходятся: если источник обгоняет, в его буфере копится
+                        // лишнее и звук медленно отстаёт от видео (до 2 сек — размера буфера). Срезаем излишек.
+                        foreach (var b in _buffers) TrimBacklog(b, ref scratch);
                     }
                     Thread.Sleep(20);
                 }
@@ -129,14 +160,35 @@ namespace ArcRecorder
             catch { /* пайп закрыт — ffmpeg завершился */ }
         }
 
-        /// <summary>Останавливает захват и закрывает stdin ffmpeg — с -shortest это мягко завершает запись.</summary>
+        /// <summary>Оставляет в буфере источника ~50 мс, если там накопилось больше 200 мс сверх отданного.</summary>
+        static void TrimBacklog(BufferedWaveProvider b, ref byte[] scratch)
+        {
+            var wf = b.WaveFormat;
+            int buffered = b.BufferedBytes;
+            if (buffered <= wf.AverageBytesPerSecond / 5) return;
+            int drop = buffered - wf.AverageBytesPerSecond / 20;
+            drop -= drop % wf.BlockAlign;
+            if (drop <= 0) return;
+            if (scratch.Length < drop) scratch = new byte[drop];
+            b.Read(scratch, 0, drop);
+        }
+
+        /// <summary>Останавливает захват и закрывает звуковой канал (зовётся после выхода ffmpeg или при его падении).</summary>
         public void Stop()
         {
+            if (Interlocked.Exchange(ref _stopped, 1) == 1) return; // зовут и Stop, и обработчик выхода ffmpeg
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             _running = false;
+            try { _cts.Cancel(); } catch { } // если ffmpeg так и не подключился к каналу
             try { _pump?.Join(500); } catch { }
+            long tJoin = sw.ElapsedMilliseconds;
             try { _loopback?.StopRecording(); _loopback?.Dispose(); } catch { }
+            long tLoop = sw.ElapsedMilliseconds;
             try { _mic?.StopRecording(); _mic?.Dispose(); } catch { }
-            try { _out?.Close(); } catch { }
+            long tMic = sw.ElapsedMilliseconds;
+            try { _server.Dispose(); } catch { }
+            StopTimings = $" (ждали видео {_videoWaitMs} мс, макс. запись в канал {_maxWriteMs} мс; при стопе: поток звука {tJoin} мс, " +
+                          $"loopback {tLoop - tJoin} мс, микрофон {tMic - tLoop} мс, закрытие канала {sw.ElapsedMilliseconds - tMic} мс)";
         }
 
         /// <summary>Берёт первые 2 канала из многоканального источника.</summary>

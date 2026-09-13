@@ -34,9 +34,18 @@ namespace ArcRecorder
         public void Start()
         {
             if (IsRunning) return;
-            _session = new TraceEventSession(SessionName); // одноимённая старая сессия перехватывается
-            _session.EnableProvider(DxgiProvider, TraceEventLevel.Informational);
-            _session.EnableProvider(D3D9Provider, TraceEventLevel.Informational);
+            var session = new TraceEventSession(SessionName); // одноимённая старая сессия перехватывается
+            try
+            {
+                session.EnableProvider(DxgiProvider, TraceEventLevel.Informational);
+                session.EnableProvider(D3D9Provider, TraceEventLevel.Informational);
+            }
+            catch
+            {
+                session.Dispose(); // без админа падаем здесь — не оставляем полусозданную сессию
+                throw;
+            }
+            _session = session;
             _session.Source.Dynamic.All += OnEvent;
             _session.Source.UnhandledEvents += OnEvent;
             _thread = new Thread(() => { try { _session.Source.Process(); } catch { } })

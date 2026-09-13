@@ -34,6 +34,15 @@ namespace ArcRecorder
             return Array.IndexOf(ShellClasses, ClassOf(h)) >= 0;
         }
 
+        /// <summary>Активное окно, если оно чужое (не наш оверлей); иначе IntPtr.Zero.</summary>
+        public static IntPtr ForegroundExternalWindow()
+        {
+            var h = GetForegroundWindow();
+            if (h == IntPtr.Zero) return IntPtr.Zero;
+            GetWindowThreadProcessId(h, out uint pid);
+            return pid != 0 && pid != (uint)Environment.ProcessId ? h : IntPtr.Zero;
+        }
+
         /// <summary>
         /// Заголовок окна для записи окна: активное окно;
         /// если активны мы сами (клик в оверлее) — первое подходящее по Z-порядку.

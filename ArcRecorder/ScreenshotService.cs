@@ -23,21 +23,8 @@ namespace ArcRecorder
 
         const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
 
-        /// <summary>Файл диагностики скриншотов: %APPDATA%\ArcRecorder\screenshot.log.</summary>
-        public static readonly string LogPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "ArcRecorder", "screenshot.log");
-
-        /// <summary>Пишет строку в лог (молча глотает ошибки — лог не должен ломать захват).</summary>
-        public static void Log(string msg)
-        {
-            try
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
-                File.AppendAllText(LogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {msg}\r\n");
-            }
-            catch { }
-        }
+        /// <summary>Диагностика скриншотов: %APPDATA%\ArcRecorder\screenshot.log (с ротацией).</summary>
+        public static void Log(string msg) => AppLog.Write("screenshot.log", msg);
 
         public static string ScreenshotFolder(AppSettings s) => Path.Combine(s.OutputFolder, "Screenshots");
 
@@ -122,13 +109,17 @@ namespace ArcRecorder
                     CreateNoWindow = true,
                     RedirectStandardError = true
                 });
-                string stderr = p.StandardError.ReadToEnd(); // читаем ДО WaitForExit — иначе дедлок на полном буфере
+                // stderr читаем параллельно: синхронный ReadToEnd ждал конца процесса,
+                // и при зависшем ffmpeg до таймаута дело не доходило никогда
+                var stderrTask = p.StandardError.ReadToEndAsync();
                 if (!p.WaitForExit(10000))
                 {
                     try { p.Kill(); } catch { }
-                    Log("CaptureDda: таймаут 10с, ffmpeg убит. stderr: " + stderr.Trim());
+                    Log("CaptureDda: таймаут 10с, ffmpeg убит");
+                    try { if (File.Exists(path)) File.Delete(path); } catch { }
                     return false;
                 }
+                string stderr = stderrTask.Wait(2000) ? stderrTask.Result : "";
                 if (p.ExitCode != 0)
                 {
                     Log($"CaptureDda: exit={p.ExitCode}. stderr: {stderr.Trim()}");

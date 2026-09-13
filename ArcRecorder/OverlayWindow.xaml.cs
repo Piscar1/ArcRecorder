@@ -33,6 +33,8 @@ namespace ArcRecorder
                 .ContinueWith(t => Dispatcher.Invoke(() => GpuSubText.Text = t.Result + " · QSV"));
 
             Deactivated += (o, e) => HideOverlay();
+            // Панель не должна попадать в запись, если её открыли по Alt+Z посреди записи
+            SourceInitialized += (o, e) => CaptureExclusion.Apply(this);
             _unclipTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
             _unclipTimer.Tick += (o, e) => ClipCursor(IntPtr.Zero);
         }
@@ -187,6 +189,7 @@ namespace ArcRecorder
             SizeXLItem.Content = Loc.T("SizeXL");
             FpsAutoThemeCheck.Content = Loc.T("AutoTheme");
             FpsHideDesktopCheck.Content = Loc.T("HideDesktop");
+            NotificationsCheck.Content = Loc.T("Notifications");
 
             // подписи мониторов ("главный"/"primary")
             RefreshMonitorNames();
@@ -228,11 +231,13 @@ namespace ArcRecorder
             SelectByTag(FpsScaleBox, s.FpsScalePercent.ToString());
             FpsAutoThemeCheck.IsChecked = s.FpsAutoTheme;
             FpsHideDesktopCheck.IsChecked = s.FpsHideOnDesktop;
+            NotificationsCheck.IsChecked = s.ShowNotifications;
 
             // Мониторы берём из DXGI — тот же порядок, что у ddagrab (Screen.AllScreens даёт другой!)
             MonitorBox.Items.Clear();
             var mons = MonitorService.GetMonitors();
             int sel = 0;
+            bool found = false;
             for (int i = 0; i < mons.Count; i++)
             {
                 var m = mons[i];
@@ -241,9 +246,17 @@ namespace ArcRecorder
                     Content = $"{Loc.T("Monitor")} {i + 1}: {m.Width}x{m.Height}{(m.Primary ? Loc.T("Primary") : "")} — {m.AdapterName}",
                     Tag = m
                 });
-                if (m.AdapterIndex == s.AdapterIndex && m.OutputIndex == s.MonitorIndex) sel = i;
+                if (m.AdapterIndex == s.AdapterIndex && m.OutputIndex == s.MonitorIndex) { sel = i; found = true; }
             }
             MonitorBox.SelectedIndex = sel;
+            // Сохранённого монитора больше нет (отключили) — фиксируем в настройках тот, что реально выбран в списке,
+            // иначе UI показывает «Монитор 1», а запись идёт в несуществующий выход
+            if (!found && mons.Count > 0)
+            {
+                s.AdapterIndex = mons[sel].AdapterIndex;
+                s.MonitorIndex = mons[sel].OutputIndex;
+                s.Save();
+            }
 
             _loadingUi = false;
         }
@@ -281,6 +294,7 @@ namespace ArcRecorder
             if (FpsScaleBox?.SelectedItem != null) s.FpsScalePercent = int.Parse(TagOf(FpsScaleBox));
             s.FpsAutoTheme = FpsAutoThemeCheck.IsChecked == true;
             s.FpsHideOnDesktop = FpsHideDesktopCheck.IsChecked == true;
+            s.ShowNotifications = NotificationsCheck.IsChecked == true;
             s.Save();
             _app.OnSettingsChanged();
         }
@@ -304,9 +318,10 @@ namespace ArcRecorder
             if (!rec) TimerText.Text = "";
 
             bool replay = _app.ReplayBuffer.IsRunning;
+            bool replayPaused = !replay && rec && _app.Settings.ReplayEnabled;
             ReplayStatusText.Text = replay
                 ? Loc.F("ReplayOn", _app.Settings.ReplayMinutes)
-                : Loc.T("ReplayOff");
+                : replayPaused ? Loc.T("ReplayPaused") : Loc.T("ReplayOff");
             ReplayStatusText.Foreground = replay
                 ? (Brush)FindResource("OkBrush")
                 : (Brush)FindResource("SubTextBrush");
@@ -347,6 +362,7 @@ namespace ArcRecorder
 
         void MicRow_Click(object sender, RoutedEventArgs e)
         {
+            if (_app.Recorder.IsRecording) return; // идущую запись это не изменит (и галочка в настройках заблокирована)
             MicCheck.IsChecked = MicCheck.IsChecked != true; // дальше сработает Setting_Changed
             RefreshStatus();
         }
@@ -357,8 +373,16 @@ namespace ArcRecorder
             if (IsVisible && !_loadingUi) RefreshStatus();
         }
 
+        void NotificationsCheck_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_loadingUi) return;
+            SaveUiToSettings();
+            if (NotificationsCheck.IsChecked == true) _app.ShowTestToast(); // сразу показать, как это выглядит
+        }
+
         void ReplayCheck_Changed(object sender, RoutedEventArgs e)
         {
+            if (_loadingUi) return; // иначе буфер стартовал прямо из конструктора оверлея, ещё до OnStartup
             SaveUiToSettings();
             _app.ApplyReplayEnabled();
             if (IsVisible) RefreshStatus();
@@ -369,7 +393,7 @@ namespace ArcRecorder
             if (_loadingUi) return;
             SaveUiToSettings();
             _app.ApplyFpsOverlayEnabled();
-            if (IsVisible) RefreshStatus();
+            SyncFpsCheckbox(); // без прав админа счётчик не включится — вернуть галочку в реальное состояние
         }
 
         void BitrateSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

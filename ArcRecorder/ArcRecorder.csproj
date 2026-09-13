@@ -13,6 +13,7 @@
     <Platform>x64</Platform>
     <AssemblyTitle>ArcRecorder</AssemblyTitle>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\ArcRecorder.ico</ApplicationIcon>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
@@ -21,6 +22,12 @@
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.12" />
     <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- Иконки трея (генерирует design\make-icons.ps1) -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\ArcRecorder.ico" LogicalName="ArcRecorder.ico" />
+    <EmbeddedResource Include="Assets\ArcRecorderIdle.ico" LogicalName="ArcRecorderIdle.ico" />
   </ItemGroup>
 
 </Project>
